@@ -1,0 +1,7 @@
+path,label,split,group
+clips/session01_layup.mp4,layup,train,session01
+clips/session01_jump.mp4,jump_shot,train,session01
+clips/session02_layup.mp4,layup,val,session02
+clips/session02_jump.mp4,jump_shot,val,session02
+clips/session03_layup.mp4,layup,test,session03
+clips/session03_jump.mp4,jump_shot,test,session03
