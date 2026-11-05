@@ -6,17 +6,19 @@ We use PyTorch and TorchVision's pretrained **R3D-18 video CNN**, keep its featu
 
 ## Start here in the cloud terminal
 
-The environment already has a local `.venv` installed. From the repository:
+The prepared cloud environment has a virtual environment outside the checkout. From the repository:
 
 ```bash
 cd /workspace/basketball-shot-classifier
-source .venv/bin/activate
+source /workspace/.venvs/basketball-shot-classifier/bin/activate
 python -m shot_classifier doctor
 python -m shot_classifier smoke
 python -m pytest -q
 ```
 
 `doctor` checks CUDA at runtime. `smoke` uses random weights and a synthetic video to check a real CNN forward pass and classifier update without downloading weights. Passing it means the plumbing works, not that the model understands basketball.
+
+For **Part 1: how a video becomes a prediction**, run `python -m shot_classifier inspect` and follow [the walkthrough](docs/part1.md). The command reports input dimensions, CNN features, logits, softmax scores, and a demonstration label. It also accepts a trimmed clip. Its classification head is untrained.
 
 For a fresh Linux or Windows CPU environment:
 

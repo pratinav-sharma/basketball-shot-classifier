@@ -1,4 +1,5 @@
 import csv
+import json
 
 import cv2
 import numpy as np
@@ -116,3 +117,36 @@ def test_cuda_request_does_not_silently_fallback(monkeypatch):
     assert str(choose_device('auto')) == 'cpu'
     with pytest.raises(ValueError, match='CUDA is unavailable'):
         choose_device('cuda')
+
+
+@pytest.mark.parametrize('use_clip', [False, True])
+def test_inspect_command_traces_video_to_prediction(tmp_path, monkeypatch, capsys, use_clip):
+    from shot_classifier.__main__ import main
+
+    command = ['shot_classifier', 'inspect']
+    if use_clip:
+        path = tmp_path / 'clip.avi'
+        writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'MJPG'), 15, (64, 64))
+        assert writer.isOpened()
+        for _ in range(3):
+            writer.write(np.zeros((64, 64, 3), dtype=np.uint8))
+        writer.release()
+        command.append(str(path))
+    monkeypatch.setattr('sys.argv', command)
+    main()
+    report = json.loads(capsys.readouterr().out)
+    assert report['input']['source'] == (str(path) if use_clip else 'synthetic random numbers')
+    assert report['input']['shape'] == [1, 3, 16, 112, 112]
+    assert report['input']['dtype'] == 'torch.float32'
+    assert report['input']['device'] == 'cpu'
+    assert report['encoder']['weights'] == 'random'
+    assert report['encoder']['feature_shape'] == [1, 512]
+    classifier = report['classifier']
+    assert classifier['logit_shape'] == [1, 2]
+    assert classifier['class_order'] == list(CLASSES)
+    logits = torch.tensor(classifier['logits'])
+    scores = torch.tensor([classifier['softmax_scores'][label] for label in CLASSES])
+    assert torch.isfinite(logits).all()
+    assert torch.allclose(scores, logits.softmax(0))
+    assert classifier['prediction'] == CLASSES[int(logits.argmax())]
+    assert 'untrained' in report['note']

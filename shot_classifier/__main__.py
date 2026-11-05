@@ -73,12 +73,50 @@ def restore(path, device):
     return make_encoder().to(device), head.to(device).eval()
 
 
+def inspect_video(clip=None, pretrained=False):
+    """Trace one video through the CNN and an untrained classification head."""
+    torch.manual_seed(42)
+    video = load_clip(clip).unsqueeze(0) if clip else torch.randn(1, 3, FRAMES, 112, 112)
+    encoder, head = make_encoder(pretrained=pretrained), make_head().eval()
+    with torch.inference_mode():
+        features = encoder(video)
+        logits = head(features)
+        scores = logits.softmax(dim=1)[0]
+        predicted_index = int(logits.argmax(dim=1)[0])
+    return {
+        "input": {
+            "source": str(clip) if clip else "synthetic random numbers",
+            "shape": list(video.shape),
+            "dimension_order": ["batch", "channels", "frames", "height", "width"],
+            "dtype": str(video.dtype), "device": str(video.device),
+        },
+        "encoder": {
+            "model": "R3D-18",
+            "weights": WEIGHTS.name if pretrained else "random",
+            "feature_shape": list(features.shape),
+        },
+        "classifier": {
+            "weights": "random, untrained",
+            "logit_shape": list(logits.shape),
+            "class_order": list(CLASSES),
+            "logits": logits[0].tolist(),
+            "softmax_scores": dict(zip(CLASSES, scores.tolist())),
+            "prediction": CLASSES[predicted_index],
+        },
+        "note": "Demonstration only: the head is untrained. Scores are not calibrated confidence or evidence of basketball accuracy.",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--threads", type=int, default=2, help="CPU threads (default: 2)")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Check Python, PyTorch, GPU, and Nsight")
     commands.add_parser("smoke", help="Offline synthetic forward/backward check; no weights download")
+    inspection = commands.add_parser("inspect", help="Trace video -> features -> scores -> demo prediction on CPU")
+    inspection.add_argument("clip", nargs="?", help="Optional trimmed video; otherwise use synthetic input")
+    inspection.add_argument("--pretrained", action="store_true",
+                            help="Use pretrained CNN weights (downloads on first use); head stays untrained")
     check = commands.add_parser("check-data", help="Validate manifest and decode every clip")
     check.add_argument("manifest")
     training = commands.add_parser("train", help="Train only the final layer of pretrained R3D-18")
@@ -111,7 +149,10 @@ def main():
             torch.manual_seed(42)
             encoder, head = make_encoder(pretrained=False), make_head()
             with torch.no_grad():
-                features = encoder(torch.randn(1, 3, FRAMES, 112, 112))
+                video = torch.randn(1, 3, FRAMES, 112, 112)
+                print("Video shape:", video.shape)
+                features = encoder(video)
+                print("Feature shape:", features.shape)
             before = head.weight.detach().clone()
             optimizer = torch.optim.SGD(head.parameters(), lr=0.01)
             logits = head(features)
@@ -128,6 +169,8 @@ def main():
             for row in rows:
                 load_clip(row["path"])
             print(f"PASS: {len(rows)} clips decoded; paths, labels, and group splits validated.")
+        elif args.command == "inspect":
+            print(json.dumps(inspect_video(args.clip, args.pretrained), indent=2))
         elif args.command == "train":
             if args.epochs < 1 or not 0 < args.lr < float("inf"):
                 parser.error("--epochs and --lr must be positive and finite")
